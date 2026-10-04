@@ -1,0 +1,9 @@
+# NDK build output
+obj/
+libs/
+
+# editor / OS cruft
+*.o
+*.o.d
+*.swp
+.DS_Store
