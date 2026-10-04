@@ -18,6 +18,7 @@ fixes that from userspace **without patching SystemUI, the fingerprint HAL, or a
 |---|---|---|
 | `fodbridge` | `fodbridge.cpp` + `aoddoze.cpp` | Root daemon. Watches the fingerprint HAL's own logcat and, at auth start/stop, sends the proven `IXiaomiFingerprint.extCmd(4, 3)` arm / disarm sequence so Local-HBM lights. `aoddoze` keeps the always-on display lit by driving the Xiaomi `mi_disp` doze-brightness ioctl on doze entry (event-driven, 0% idle). |
 | `fodinject` | `fodinject.cpp` | Minimal ARM64 `ptrace` injector that loads `libfodhook.so` into `com.android.systemui` (remote `dlopen`) to drive the pressed ripple + Quick Launch, re-injecting if SystemUI restarts. |
+| `libfodhook.so` | `fodhook/libfodhook.cpp` | The payload `fodinject` loads into `com.android.systemui`. Grabs the live `JavaVM` and drives the OnePlus FOD press UI via JNI: polls `sys.bomb.fod` (published by `fodbridge` on finger down/up) and calls `OnScreenFingerprintUiMech.onFpTouch(boolean)` by reflection — the pressed ripple + Quick Launch, with no APK/jar patch. |
 | `fodprobe` | `fodprobe.cpp` | Root probe harness to iterate the doze-FOD illumination sequence live (reads commands from `/data/local/tmp/fodprobe.cmd`) without reflashing. Dev tool, not part of the runtime. |
 
 ## Master gate — `gate.h`
@@ -35,17 +36,17 @@ until it is enabled.
 
 ## Build
 
-Needs the Android NDK (tested with r26). From the repo root:
+Needs the Android NDK (tested with r26). Each module builds from its own folder:
 
 ```bash
-cd fodbridge
-ndk-build
+cd fodbridge && ndk-build   # -> libs/arm64-v8a/{fodbridge, fodinject}
+cd fodhook   && ndk-build   # -> libs/arm64-v8a/libfodhook.so
 ```
 
-Outputs `libs/arm64-v8a/fodbridge` and `libs/arm64-v8a/fodinject`. `fodprobe` is built
-separately when needed. The binaries link the device's `libbinder_ndk` and run as root
-(e.g. from a Magisk/KernelSU service). `../gate.h` is included from the repo root, so keep
-the layout intact.
+The binaries link the device's `libbinder_ndk` and run as root (e.g. from a Magisk/
+KernelSU service); `libfodhook.so` goes to `/system/lib64` so SystemUI's linker namespace
+allows the `dlopen`. `fodprobe` is built separately when needed. Both modules include
+`../gate.h` from the repo root, so keep the layout intact.
 
 ## Layout
 
@@ -56,7 +57,8 @@ fodbridge/
 ├── aoddoze.cpp        AOD keep-alive (mi_disp doze brightness)
 ├── fodinject.cpp      ptrace libfodhook injector
 ├── fodprobe.cpp       root probe harness (dev)
-└── jni/
-    ├── Android.mk
-    └── Application.mk
+└── jni/{Android.mk, Application.mk}
+fodhook/
+├── libfodhook.cpp     SystemUI-side FOD press UI driver (JNI)
+└── jni/{Android.mk, Application.mk}
 ```
